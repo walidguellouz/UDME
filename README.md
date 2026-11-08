@@ -72,14 +72,19 @@ Une fois le moteur confirmé sur une installation autorisée, on ajoutera le jeu
 
 ## Garanties implémentées
 Lecture seule fail-closed · requêtes de catalogue fixes (pas de SQL arbitraire) · métadonnées uniquement ·
-paquet signé HMAC + checksum + anti-rejeu (horodatage, nonce unique) + idempotence · jeton d'enrôlement à usage unique ·
+paquet signé **Ed25519** (clé privée uniquement sur l'agent, clé publique côté serveur) + checksum + anti-rejeu (horodatage, nonce unique) + idempotence · jeton d'enrôlement à usage unique ·
 révocation d'agent · isolation par tenant (404 inter-tenant) · RBAC admin/reviewer/viewer · journal d'audit ·
 un label < 0,60 reste `UNKNOWN` · aucune règle ne dépasse 0,94 · rejets humains respectés à l'export.
 
+## Revue humaine persistante (plan 8.4)
+Au scan suivant d'un même site : les relations acceptées/rejetées/à investiguer et les étiquettes approuvées/modifiées sont reprises ;
+une relation **acceptée qui disparaît n'est jamais supprimée en silence** : elle passe en `conflict` (bandeau d'alerte + onglet Revue).
+Les exports reflètent vos décisions (rejets exclus, étiquettes approuvées/modifiées utilisées, éléments non revus signalés).
+
 ## Non implémenté / à faire (honnêtement)
+- Clé privée de l'agent stockée dans `~/.udme/agent.json` (droits 600) → à déplacer vers le Gestionnaire d'identifiants Windows ; rotation de clé non implémentée.
 - Frontend : compile (Angular strict) mais **non testé dans un navigateur** ; pas encore d'assistant d'enrôlement d'agent ni de tableau de bord d'agents (API prête : tokens, révocation).
 - **Requêtes de catalogue spécifiques à WinGest** : impossibles avant la confirmation du moteur sur une installation autorisée (Annexe A).
-- Signature agent : HMAC à secret partagé stocké en base → remplacer par Ed25519 (clé publique) + KMS avant pilote.
 - Stockage objet S3 (paquet en JSONField pour l'instant), RLS PostgreSQL, MFA/OIDC, rétention, installeur signé (WiX/PyInstaller), SBOM.
 - Mapper LLM : interface `SemanticProvider` prévue, aucun fournisseur branché ; règles seules pour l'instant.
-- Reports de décisions humaines d'un scan à l'autre (plan 8.4) ; profilage de valeurs (opt-in) ; pilotes Firebird/Access non testés.
+- Profilage de valeurs (opt-in) ; pilotes Firebird/Access non testés.

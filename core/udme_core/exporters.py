@@ -35,7 +35,7 @@ def to_markdown(pkg: Package, rels, maps) -> str:
     for s, t in pkg.iter_tables():
         oid = f"{s}.{t.name}"; m = mp.get(oid)
         L.append(f"\n### {oid} ({t.object_type})")
-        if m: L.append(f"*Proposed:* `{m.label}` — confidence {m.confidence} — **review required**")
+        if m: L.append(f"*Proposed:* `{m.label}` — confidence {m.confidence} — " + ("**review required**" if m.review_required else "approved by reviewer"))
         L += ["", "| # | Column | Type | Normalized | Null | PK |", "|--|--|--|--|--|--|"]
         for c in t.columns:
             L.append(f"| {c.ordinal} | {c.name} | {c.native_type} | {c.normalized_type} | "

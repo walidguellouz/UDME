@@ -4,3 +4,5 @@ dist/
 __pycache__/
 *.egg-info/
 db.sqlite3
+backend/frontend_dist/
+backend/staticfiles/

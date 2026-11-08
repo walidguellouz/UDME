@@ -2,7 +2,7 @@ import os, sqlite3, time, pytest
 from make_fixture import build
 from udme_core.connectors import SQLAlchemyConnector
 from udme_core.pipeline import analyze, diff
-from udme_core.package import sign_envelope, verify_envelope, schema_hash
+from udme_core.package import sign_envelope, verify_envelope, schema_hash, generate_keypair
 from udme_core.fingerprint import Evidence, fingerprint
 from udme_core import exporters as ex
 
@@ -54,12 +54,14 @@ def test_hash_stable_and_diff(pkg):
 
 def test_envelope_security(pkg):
     pk, _ = pkg
-    env = sign_envelope(pk, tenant_id="t", agent_id="a", scan_id="s", secret="k")
-    assert verify_envelope(env, "k").source.engine == "sqlite"
-    with pytest.raises(ValueError, match="bad_signature"): verify_envelope(env, "wrong")
-    env2 = dict(env, package=env["package"] + " "); 
-    with pytest.raises(ValueError, match="bad_checksum"): verify_envelope(env2, "k")
-    with pytest.raises(ValueError, match="stale"): verify_envelope(dict(env, created_at=1), "k")
+    priv, pub = generate_keypair()
+    env = sign_envelope(pk, tenant_id="t", agent_id="a", scan_id="s", private_key=priv)
+    assert verify_envelope(env, pub).source.engine == "sqlite"
+    with pytest.raises(ValueError, match="bad_signature"): verify_envelope(env, generate_keypair()[1])
+    with pytest.raises(ValueError, match="bad_signature"): verify_envelope(dict(env, scan_id="other"), pub)  # signed fields are tamper-evident
+    env2 = dict(env, package=env["package"] + " ")
+    with pytest.raises(ValueError, match="bad_checksum"): verify_envelope(env2, pub)
+    with pytest.raises(ValueError, match="stale"): verify_envelope(dict(env, created_at=1), pub)
 
 def test_fingerprint(pkg):
     _, p = pkg

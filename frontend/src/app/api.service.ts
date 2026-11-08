@@ -5,7 +5,7 @@ import { tap } from 'rxjs';
 
 export interface ScanRow { id: string; site: string; engine: string; status: string; schema_hash: string; created_at: string; }
 export interface ScanDetail { id: string; status: string; engine: string; engine_version: string; warnings: string[];
-  metadata_only: boolean; objects: { schema: string; name: string; type: string; columns: number }[]; pending_reviews: number; }
+  metadata_only: boolean; conflicts: number; objects: { schema: string; name: string; type: string; columns: number }[]; pending_reviews: number; }
 export interface TableInfo { id: string; type: string; primary_key: string[];
   columns: { name: string; ordinal: number; native_type: string; normalized_type: string; nullable: boolean | null }[];
   foreign_keys: unknown[]; indexes: unknown[]; }

@@ -9,7 +9,7 @@ from udme_core.fingerprint import Evidence, fingerprint, windows_installed_apps,
 from udme_core.connectors import SQLAlchemyConnector
 from udme_core.pipeline import analyze, diff
 from udme_core.model import Package
-from udme_core.package import sign_envelope
+from udme_core.package import sign_envelope, generate_keypair
 from udme_core import exporters as ex
 from udme_core.finder import find_databases
 from . import picker
@@ -33,10 +33,11 @@ def _post(url, body, headers=None):
 def cmd_enroll(a):
     """One-time enrollment: exchange the short-lived token (from the web portal) for a revocable device credential."""
     server = a.server.rstrip("/")
-    try: _, body = _post(f"{server}/api/v1/agents/enroll", {"token": a.token, "name": a.name or os.environ.get("COMPUTERNAME", "agent")})
+    priv, pub = generate_keypair()  # private key stays on this machine
+    try: _, body = _post(f"{server}/api/v1/agents/enroll", {"token": a.token, "public_key": pub, "name": a.name or os.environ.get("COMPUTERNAME", "agent")})
     except urllib.error.HTTPError as e: sys.exit(f"Enrôlement refusé ({e.code}) : jeton invalide, expiré ou déjà utilisé.")
     d = json.loads(body); CONF.parent.mkdir(parents=True, exist_ok=True)
-    CONF.write_text(json.dumps({"server": server, "tenant_id": d["tenant_id"], "agent_id": d["agent_id"], "secret": d["secret"]}))
+    CONF.write_text(json.dumps({"server": server, "tenant_id": d["tenant_id"], "agent_id": d["agent_id"], "private_key": priv}))
     try: os.chmod(CONF, stat.S_IRUSR | stat.S_IWUSR)  # POSIX 600; on Windows the profile ACL applies
     except OSError: pass
     print(f"Agent enrôlé ({d['agent_id']}). Identifiants enregistrés dans {CONF}")
@@ -73,10 +74,10 @@ def cmd_scan(a):
     print(f"OK: {n} objects, {len(res.relationships)} relationships, schema_hash={res.schema_hash[:12]} -> {out}")
     if a.upload:
         c = load_conf(); g = lambda k: os.environ.get("UDME_" + k.upper()) or c.get(k)
-        if not (g("tenant_id") and g("agent_id") and g("secret")): sys.exit("Agent non enrôlé : lancez d'abord `udme-agent enroll --server URL --token JETON`.")
+        if not (g("tenant_id") and g("agent_id") and g("private_key")): sys.exit("Agent non enrôlé : lancez d'abord `udme-agent enroll --server URL --token JETON`.")
         url = c.get("server", "").rstrip("/") + "/api/v1/scans/ingest" if a.upload == "auto" else a.upload
-        env = sign_envelope(pkg, tenant_id=g("tenant_id"), agent_id=g("agent_id"), scan_id=str(uuid.uuid4()), secret=g("secret"))
-        try: st, body = _post(url, env, {"Authorization": f"Agent {g('agent_id')}:{g('secret')}"})
+        env = sign_envelope(pkg, tenant_id=g("tenant_id"), agent_id=g("agent_id"), scan_id=str(uuid.uuid4()), private_key=g("private_key"))
+        try: st, body = _post(url, env)
         except urllib.error.HTTPError as e: sys.exit(f"Envoi refusé ({e.code}) : {e.read().decode()[:200]}")
         print("Envoyé :", st, body[:200])
 

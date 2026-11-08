@@ -58,8 +58,7 @@ class Agent(models.Model):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
     site = models.ForeignKey(Site, on_delete=models.CASCADE)
     name = models.CharField(max_length=200, blank=True)
-    # MVP: shared HMAC secret. TODO(hardening): replace by per-agent Ed25519 public key; keep secrets in a KMS.
-    secret = models.CharField(max_length=128)
+    public_key = models.CharField(max_length=64, default="")  # Ed25519 (base64); the private key stays on the agent
     revoked = models.BooleanField(default=False)
     last_seen_at = models.DateTimeField(null=True)
 

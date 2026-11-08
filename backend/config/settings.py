@@ -10,7 +10,7 @@ ALLOWED_HOSTS = ([RENDER_HOST] if RENDER_HOST else []) + [h for h in os.environ.
 CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if h not in ("*", "localhost", "127.0.0.1")]
 INSTALLED_APPS = ["django.contrib.auth", "django.contrib.contenttypes", "django.contrib.sessions",
                   "django.contrib.messages", "rest_framework", "rest_framework.authtoken", "udme_api"]
-MIDDLEWARE = ["django.middleware.security.SecurityMiddleware", "whitenoise.middleware.WhiteNoiseMiddleware", "django.contrib.sessions.middleware.SessionMiddleware",
+MIDDLEWARE = ["udme_api.middleware.HealthCheckMiddleware", "django.middleware.security.SecurityMiddleware", "whitenoise.middleware.WhiteNoiseMiddleware", "django.contrib.sessions.middleware.SessionMiddleware",
               "django.middleware.common.CommonMiddleware", "django.contrib.auth.middleware.AuthenticationMiddleware"]
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "APP_DIRS": True,

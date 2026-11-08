@@ -28,7 +28,7 @@ udme-agent find-databases             # cherche les bases, VOUS choisissez
 udme-agent scan --upload              # extraction lecture seule + envoi signé
 ```
 3. Le scan apparaît dans **Scans** (revue des relations/mappings, export).
-Les identifiants de l'agent sont dans `~/.udme/agent.json` (droits 600 sous Linux/macOS ; sous Windows, protégé par le profil utilisateur).
+À l'enrôlement l'agent génère une paire de clés **Ed25519** : la clé privée reste dans `~/.udme/agent.json` (droits 600 ; sous Windows, protégée par le profil utilisateur), le serveur ne reçoit que la clé publique. Révoquer un agent (`POST /agents/{id}/revoke`) bloque ses envois. Les agents enrôlés avant cette version doivent être ré-enrôlés.
 
 ## Limites du plan gratuit (à lire avant d'inviter un client)
 - La base **free expire après 30 jours** (export ou passage à un plan payant avant l'échéance) ; le service **free s'endort après ~15 min** (premier appel lent, ~1 min).
@@ -37,5 +37,4 @@ Les identifiants de l'agent sont dans `~/.udme/agent.json` (droits 600 sous Linu
 - Sans `REDIS_URL`, l'analyse s'exécute dans la requête d'envoi (limite 120 s). Pour de gros schémas : ajoutez une instance Key Value + un worker (`celery -A config worker -l info`) et définissez `REDIS_URL`.
 
 ## Avant de traiter des données de clients réels
-Voir « Non implémenté » du README : remplacer le secret HMAC partagé par Ed25519 + coffre de secrets, stockage objet pour les paquets,
-MFA, politique de rétention, et valider hébergement/RGPD (région Frankfurt = UE) avec un conseil juridique, notamment pour des clients en Tunisie.
+Voir « Non implémenté » du README : stockage objet pour les paquets, MFA, politique de rétention, rotation des clés d'agent, et valider hébergement/RGPD (région Frankfurt = UE) avec un conseil juridique, notamment pour des clients en Tunisie.

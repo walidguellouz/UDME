@@ -2,7 +2,7 @@
 name = "udme-core"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["sqlalchemy>=2.0", "pydantic>=2.6"]
+dependencies = ["sqlalchemy>=2.0", "pydantic>=2.6", "cryptography>=42"]
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"

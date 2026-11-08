@@ -1,4 +1,3 @@
-import hmac
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.utils import timezone
@@ -7,31 +6,16 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, NotFound, AuthenticationFailed
 from rest_framework.permissions import AllowAny
 from rest_framework.authentication import BaseAuthentication
-from udme_core.package import verify_envelope
+from udme_core.package import verify_envelope, valid_public_key
 from udme_core.model import Package
 from udme_core.pipeline import analyze, diff as pkg_diff
 from udme_core import exporters as ex
-import secrets
 from . import models as M
 from .tasks import analyze_scan
 
 
 def audit(tenant, actor, action, resource="", **details):
     M.AuditEvent.objects.create(tenant=tenant, actor=str(actor), action=action, resource=str(resource), details=details)
-
-
-class AgentAuth(BaseAuthentication):
-    """Authorization: Agent <agent_id>:<secret>. Narrow device scope; revoked agents are refused."""
-    def authenticate(self, request):
-        h = request.headers.get("Authorization", "")
-        if not h.startswith("Agent "): return None
-        try:
-            aid, sec = h[6:].split(":", 1); a = M.Agent.objects.select_related("tenant").get(pk=aid)
-        except Exception:
-            raise AuthenticationFailed("invalid agent credential")
-        if a.revoked or not hmac.compare_digest(a.secret, sec): raise AuthenticationFailed("invalid agent credential")
-        return (None, a)
-    def authenticate_header(self, request): return "Agent"
 
 
 def membership(request, roles=None):
@@ -58,12 +42,13 @@ class AgentEnrollView(APIView):
     authentication_classes = []; permission_classes = [AllowAny]
     @transaction.atomic
     def post(self, request):
+        pub = str(request.data.get("public_key", ""))
+        if not valid_public_key(pub): return Response({"code": "PUBLIC_KEY_INVALID"}, status=400)  # checked BEFORE consuming the token
         tok = M.EnrollmentToken.consume(str(request.data.get("token", "")))
         if not tok: return Response({"code": "ENROLLMENT_TOKEN_INVALID"}, status=403)
-        secret = secrets.token_urlsafe(32)
-        a = M.Agent.objects.create(tenant=tok.tenant, site=tok.site, name=request.data.get("name", ""), secret=secret)
+        a = M.Agent.objects.create(tenant=tok.tenant, site=tok.site, name=request.data.get("name", ""), public_key=pub)
         audit(tok.tenant, a.pk, "agent.enrolled", a.pk)
-        return Response({"agent_id": str(a.pk), "tenant_id": str(tok.tenant_id), "secret": secret}, status=201)  # shown once
+        return Response({"agent_id": str(a.pk), "tenant_id": str(tok.tenant_id)}, status=201)  # the server holds no secret
 
 
 class AgentRevokeView(APIView):
@@ -75,16 +60,16 @@ class AgentRevokeView(APIView):
 
 
 class IngestView(APIView):
-    authentication_classes = [AgentAuth]; permission_classes = [AllowAny]
+    authentication_classes = []; permission_classes = [AllowAny]   # the Ed25519 signature IS the authentication
     def post(self, request):
-        agent = request.auth
-        if not isinstance(agent, M.Agent): raise AuthenticationFailed()
         env = request.data
+        try: agent = M.Agent.objects.select_related("tenant", "site").get(pk=env.get("agent_id"), revoked=False)
+        except Exception: return Response({"code": "AGENT_UNKNOWN_OR_REVOKED"}, status=401)  # same answer for both: no enumeration
         if str(env.get("tenant_id")) != str(agent.tenant_id) or str(env.get("agent_id")) != str(agent.pk):
             audit(agent.tenant, agent.pk, "ingest.tenant_scope_violation")
             return Response({"code": "TENANT_SCOPE_VIOLATION"}, status=403)
         try:
-            pkg = verify_envelope(dict(env), agent.secret)
+            pkg = verify_envelope(dict(env), agent.public_key)
         except Exception as e:
             audit(agent.tenant, agent.pk, "ingest.rejected", reason=str(e))
             return Response({"code": "PACKAGE_INVALID", "reason": str(e)}, status=400)
@@ -117,7 +102,8 @@ class ScanDetailView(APIView):
                   for sc in p["schemas"] for t in sc["tables"]]
         return Response({"id": s.pk, "status": s.status, "engine": s.engine, "engine_version": s.engine_version,
                          "warnings": p["source"]["warnings"], "metadata_only": p["source"]["metadata_only"],
-                         "objects": tables, "pending_reviews": s.relationships.filter(status="needs_review").count()
+                         "objects": tables, "conflicts": s.relationships.filter(status="conflict").count(),
+                         "pending_reviews": s.relationships.filter(status__in=["needs_review", "conflict"]).count()
                          + s.mappings.filter(status="needs_review").count()})
 
 
@@ -154,22 +140,34 @@ class ReviewView(APIView):
 
 
 class ExportView(APIView):
+    """Exports reflect the HUMAN decisions: rejected relations/labels are excluded, approved/edited labels are used,
+    still-pending items stay flagged for review, vanished accepted relations are shown as 'conflict'."""
     def get(self, request, pk):
         s, m = own_scan(request, pk); fmt = request.query_params.get("fmt", "json")
         pkg = Package.model_validate(s.package); res = analyze(pkg)
-        rels = [r for r in res.relationships]
-        rejected = {(x.data["source_table"], tuple(x.data["source_columns"]), x.data["target_table"]) for x in s.relationships.filter(status="rejected")}
-        rels = [r for r in rels if (r.source_table, tuple(r.source_columns), r.target_table) not in rejected]  # honour human decisions
-        for x in s.relationships.filter(status="accepted"):
-            for r in rels:
-                if r.source_table == x.data["source_table"] and r.source_columns == x.data["source_columns"] and r.target_table == x.data["target_table"]:
-                    r.status = "accepted"
-        maps = res.mappings
+        from udme_core.model import RelationshipCandidate as RC
+        st = {_k(x.data): x.status for x in s.relationships.all()}
+        rels = []
+        for r in res.relationships:
+            status = st.get(_k(r.model_dump()), r.status)
+            if status == "rejected": continue
+            r.status = status; rels.append(r)
+        rels += [RC(**{**x.data, "status": "conflict"}) for x in s.relationships.filter(status="conflict")]
+        db = {b.object_id: b for b in s.mappings.all()}; maps = []
+        for b in res.mappings:
+            d = db.get(b.object_id)
+            if d:
+                if d.status == "rejected": b.label, b.evidence = "UNKNOWN", b.evidence + ["proposal_rejected_by_reviewer"]
+                elif d.status in ("approved", "edited"): b.label = d.label; b.review_required = False
+            maps.append(b)
         out = {"json": (ex.to_json(pkg, rels, maps), "application/json"), "csv": (ex.relationships_csv(rels), "text/csv"),
                "md": (ex.to_markdown(pkg, rels, maps), "text/markdown"), "ddl": (ex.to_ddl(pkg), "text/plain")}.get(fmt)
         if not out: return Response({"code": "UNSUPPORTED_FORMAT"}, status=400)
         audit(m.tenant, request.user.pk, "export.created", s.pk, format=fmt)
         return HttpResponse(out[0], content_type=out[1])
+
+
+def _k(d): return (d["source_table"], tuple(d["source_columns"]), d["target_table"], tuple(d["target_columns"]))
 
 
 class DiffView(APIView):

@@ -17,6 +17,8 @@ type Tab = 'overview' | 'schema' | 'graph' | 'review' | 'diff' | 'export';
 
   @switch (tab()) {
   @case ('overview') {
+    @if (d.conflicts) { <div class="card warn" role="alert"><strong>{{d.conflicts}} relation(s) acceptée(s) absente(s) de ce scan.</strong>
+      Elles n'ont pas été supprimées : vérifiez-les dans l'onglet Revue (état « conflict »).</div> }
     <div class="card"><div class="row">
       <span>Objets : <strong>{{d.objects.length}}</strong></span>
       <span>Mode : <span class="badge">{{d.metadata_only ? 'métadonnées uniquement' : 'AVEC DONNÉES'}}</span></span>
@@ -58,7 +60,7 @@ type Tab = 'overview' | 'schema' | 'graph' | 'review' | 'diff' | 'export';
       <table><thead><tr><th>Source</th><th>Cible</th><th>Type</th><th>Score</th><th>Preuves</th><th>État</th><th></th></tr></thead><tbody>
       @for (e of g()?.edges ?? []; track e.id) {
         <tr><td>{{e.source_table}}.{{e.source_columns.join(',')}}</td><td>{{e.target_table}}.{{e.target_columns.join(',')}}</td><td>{{e.candidate_type}}</td>
-          <td><span class="badge" [class]="cls(e.score)">{{e.score}}</span></td><td class="mut">{{e.evidence.join(' · ')}}</td><td>{{e.status}}</td>
+          <td><span class="badge" [class]="cls(e.score)">{{e.score}}</span></td><td class="mut">{{e.evidence.join(' · ')}}</td><td [class.err]="e.status === 'conflict'">{{e.status}}</td>
           <td>@if (canReview() && !e.declared) { <button (click)="rel(e,'accept')">✔</button> <button (click)="rel(e,'reject')">✘</button> }</td></tr> }
       </tbody></table></div> }
 
