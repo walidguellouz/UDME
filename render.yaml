@@ -16,7 +16,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
-    region: frankfurt          # région UE ; doit être la même que la base (réseau privé)
+    region: oregon              # doit être la même que la base pour utiliser son réseau privé
     healthCheckPath: /api/v1/health
     autoDeploy: false
     envVars:

@@ -37,4 +37,4 @@ udme-agent scan --upload              # extraction lecture seule + envoi signé
 - Sans `REDIS_URL`, l'analyse s'exécute dans la requête d'envoi (limite 120 s). Pour de gros schémas : ajoutez une instance Key Value + un worker (`celery -A config worker -l info`) et définissez `REDIS_URL`.
 
 ## Avant de traiter des données de clients réels
-Voir « Non implémenté » du README : stockage objet pour les paquets, MFA, politique de rétention, rotation des clés d'agent, et valider hébergement/RGPD (région Frankfurt = UE) avec un conseil juridique, notamment pour des clients en Tunisie.
+Voir « Non implémenté » du README : stockage objet pour les paquets, MFA, politique de rétention, rotation des clés d'agent, et valider hébergement/RGPD avec un conseil juridique, notamment pour des clients en Tunisie. La base et le service sont en Oregon (États-Unis), hors UE.
