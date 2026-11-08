@@ -1,0 +1,16 @@
+# Dev topology: Django API + Celery worker + PostgreSQL + Redis. (Run from repo root.)
+services:
+  db:    {image: "postgres:16", environment: {POSTGRES_DB: udme, POSTGRES_USER: udme, POSTGRES_PASSWORD: change-me}}
+  redis: {image: "redis:7"}
+  api: &api
+    build: {context: ., dockerfile: Dockerfile}
+    environment: &env {POSTGRES_DB: udme, POSTGRES_USER: udme, POSTGRES_PASSWORD: change-me, POSTGRES_HOST: db,
+                       REDIS_URL: "redis://redis:6379/0", DJANGO_DEBUG: "1", DJANGO_SECRET_KEY: change-me-too}
+    command: sh -c "python manage.py migrate && gunicorn config.wsgi:application -b 0.0.0.0:8000"
+    # DJANGO_DEBUG=0 force HTTPS : en local, utilisez DJANGO_DEBUG=1
+    ports: ["8000:8000"]
+    depends_on: [db, redis]
+  worker:
+    <<: *api
+    ports: []
+    command: celery -A config worker -l info

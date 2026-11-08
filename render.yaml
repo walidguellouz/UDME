@@ -1,0 +1,38 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Un seul service web (API Django + frontend Angular) + une base PostgreSQL.
+# ESSAI GRATUIT : la base free EXPIRE après 30 jours et le service free se met en veille après ~15 min.
+# Pour un pilote avec de vrais clients : passez le plan du service web ET de la base à une offre payante.
+databases:
+  - name: udme-db
+    plan: free
+    databaseName: udme
+    user: udme
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: udme
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt          # région UE ; doit être la même que la base (réseau privé)
+    healthCheckPath: /api/v1/health
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: {name: udme-db, property: connectionString}
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: UDME_ADMIN_USER
+        value: admin
+      - key: UDME_ADMIN_PASSWORD     # à saisir dans le tableau de bord Render (jamais dans Git)
+        sync: false
+      - key: UDME_TENANT_NAME
+        value: Ma pharmacie
+      - key: UDME_SITE_NAME
+        value: Site principal
+      # Optionnel (analyse asynchrone) : ajouter une instance Key Value + un worker `celery -A config worker`,
+      # puis définir REDIS_URL. Sans REDIS_URL, l'analyse s'exécute directement dans la requête d'envoi.

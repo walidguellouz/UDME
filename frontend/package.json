@@ -1,0 +1,11 @@
+{
+  "name": "udme-frontend", "version": "0.1.0", "private": true,
+  "scripts": {"start": "ng serve --proxy-config proxy.conf.json", "build": "ng build"},
+  "dependencies": {
+    "@angular/common": "^19.2.0", "@angular/compiler": "^19.2.0", "@angular/core": "^19.2.0",
+    "@angular/forms": "^19.2.0", "@angular/platform-browser": "^19.2.0", "@angular/router": "^19.2.0",
+    "cytoscape": "^3.30.0", "rxjs": "~7.8.0", "tslib": "^2.6.0", "zone.js": "~0.15.0"
+  },
+  "devDependencies": {"@angular/build": "^19.2.0", "@angular/cli": "^19.2.0", "@angular/compiler-cli": "^19.2.0",
+    "@types/cytoscape": "^3.21.0", "typescript": "~5.7.0"}
+}
