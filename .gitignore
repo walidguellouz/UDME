@@ -1,5 +1,6 @@
 node_modules/
 dist/
+build/
 .angular/
 __pycache__/
 *.egg-info/

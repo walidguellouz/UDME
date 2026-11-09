@@ -30,6 +30,13 @@ udme-agent scan --upload              # extraction lecture seule + envoi signé
 3. Le scan apparaît dans **Scans** (revue des relations/mappings, export).
 À l'enrôlement l'agent génère une paire de clés **Ed25519** : la clé privée reste dans `~/.udme/agent.json` (droits 600 ; sous Windows, protégée par le profil utilisateur), le serveur ne reçoit que la clé publique. Révoquer un agent (`POST /agents/{id}/revoke`) bloque ses envois. Les agents enrôlés avant cette version doivent être ré-enrôlés.
 
+### Installer l'agent Windows
+L'installateur autonome se construit sur Windows avec Python 3.12 :
+```powershell
+.\packaging\windows\build.ps1
+```
+Le résultat est `dist\UDME-Agent-Setup.exe`. Il installe l'agent pour l'utilisateur courant (sans droits administrateur) et crée un raccourci de recherche. L'installateur n'embarque aucun jeton ni secret. Les exécutables produits localement ne sont pas signés ; Windows peut afficher un avertissement SmartScreen.
+
 ## Limites du plan gratuit (à lire avant d'inviter un client)
 - La base **free expire après 30 jours** (export ou passage à un plan payant avant l'échéance) ; le service **free s'endort après ~15 min** (premier appel lent, ~1 min).
 - Pas de shell sur le plan gratuit : tout est piloté par l'interface web et les variables d'environnement.
