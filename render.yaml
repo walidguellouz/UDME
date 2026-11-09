@@ -5,6 +5,7 @@
 databases:
   - name: udme-db
     plan: free
+    region: oregon
     databaseName: udme
     user: udme
     postgresMajorVersion: "16"
