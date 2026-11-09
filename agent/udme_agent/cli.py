@@ -96,6 +96,21 @@ def _show_upload_result(message: str, *, gui: bool) -> None:
     show_message("UDME", message)
 
 
+def run_command(a) -> None:
+    """Keep failures visible when the agent is launched without a console."""
+    try:
+        a.f(a)
+    except SystemExit as exc:
+        if not getattr(a, "gui", False) or exc.code in (None, 0):
+            raise
+        message = exc.code if isinstance(exc.code, str) else f"Échec de la commande (code {exc.code})."
+        _show_upload_result(str(message), gui=True)
+    except Exception as exc:
+        if not getattr(a, "gui", False):
+            raise
+        _show_upload_result(f"Erreur inattendue : {exc}", gui=True)
+
+
 def cmd_discover(a):
     ev = Evidence(selected_files=a.path or [], services=windows_services(),
                   installed_apps=windows_installed_apps("wingest"))
@@ -252,7 +267,7 @@ def main(argv=None):
     fd.add_argument("--out", default="udme_out"); fd.add_argument("--product-hint", default=None); fd.set_defaults(f=cmd_find)
     an = sub.add_parser("analyze"); an.add_argument("package"); an.set_defaults(f=cmd_analyze)
     df = sub.add_parser("diff"); df.add_argument("old"); df.add_argument("new"); df.set_defaults(f=cmd_diff)
-    a = ap.parse_args(argv); a.f(a)
+    a = ap.parse_args(argv); run_command(a)
 
 
 if __name__ == "__main__":

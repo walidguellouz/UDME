@@ -1,7 +1,8 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { JsonPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription, timer, switchMap, takeWhile } from 'rxjs';
 import { Api, ScanDetail, TableInfo, Graph, Edge, Node } from './api.service';
 import { GraphComponent } from './graph.component';
 
@@ -9,6 +10,8 @@ type Tab = 'overview' | 'schema' | 'graph' | 'review' | 'diff' | 'export';
 @Component({ standalone: true, imports: [FormsModule, GraphComponent, JsonPipe], template: `
   @if (d(); as d) {
   <h2>Scan {{d.engine}} {{d.engine_version}} <span class="badge">{{d.status}}</span></h2>
+  @if (d.status === 'analyzing') { <div class="card" role="status">Analyse du schéma en cours. Cette page s'actualise automatiquement…</div> }
+  @if (err()) { <div class="card warn" role="alert">{{err()}}</div> }
   @if (d.warnings.length) { <div class="card warn" role="alert"><strong>Couverture incomplète ou avertissements</strong>
      <ul>@for (w of d.warnings; track w) { <li>{{w}}</li> }</ul></div> }
   <nav class="tabs" aria-label="Sections">
@@ -23,7 +26,17 @@ type Tab = 'overview' | 'schema' | 'graph' | 'review' | 'diff' | 'export';
       <span>Objets : <strong>{{d.objects.length}}</strong></span>
       <span>Mode : <span class="badge">{{d.metadata_only ? 'métadonnées uniquement' : 'AVEC DONNÉES'}}</span></span>
       <span>Revues en attente : <strong>{{d.pending_reviews}}</strong></span></div>
-      <p class="mut">Les étiquettes métier et relations inférées sont des <em>hypothèses</em> à valider ; aucune n'est approuvée automatiquement (sauf clés étrangères déclarées).</p></div> }
+      <p class="mut">Les étiquettes métier et relations inférées sont des <em>hypothèses</em> à valider ; aucune n'est approuvée automatiquement (sauf clés étrangères déclarées).</p></div>
+    @if (g(); as graph) {
+      <div class="card"><h3>Mapping métier proposé</h3>
+        <table><thead><tr><th>Table</th><th>Étiquette proposée</th><th>Confiance</th><th>État</th></tr></thead><tbody>
+          @for (n of graph.nodes; track n.id) { @if (n.mapping_id) {
+            <tr><td>{{n.id}}</td><td>{{n.label || 'UNKNOWN'}}</td><td>{{n.confidence}}</td><td>{{n.status}}</td></tr>
+          } }
+        </tbody></table>
+      </div>
+    } @else if (d.status === 'review_required') { <p class="mut">Chargement du mapping…</p> }
+  }
 
   @case ('schema') {
     <div class="card"><div class="row"><input placeholder="Filtrer tables/colonnes…" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Filtre"></div>
@@ -78,11 +91,12 @@ type Tab = 'overview' | 'schema' | 'graph' | 'review' | 'diff' | 'export';
   }
   } @else { <p class="mut">Chargement…</p> }
   @if (msg()) { <p role="status" class="mut">{{msg()}}</p> }` })
-export class ScanDetailComponent implements OnInit {
+export class ScanDetailComponent implements OnInit, OnDestroy {
   private api = inject(Api); private route = inject(ActivatedRoute);
   id = ''; d = signal<ScanDetail | null>(null); tables = signal<TableInfo[]>([]); g = signal<Graph | null>(null);
   tab = signal<Tab>('overview'); q = signal(''); minScore = signal(0.6); hideUnlinked = signal(true); sel = signal<Edge | null>(null);
-  msg = signal(''); confirmExport = false; baseId = ''; diff = signal<any>(null); others = signal<any[]>([]);
+  msg = signal(''); err = signal(''); confirmExport = false; baseId = ''; diff = signal<any>(null); others = signal<any[]>([]);
+  private statusPoll?: Subscription;
   tabs: [Tab, string][] = [['overview', 'Aperçu'], ['schema', 'Schéma'], ['graph', 'Graphe'], ['review', 'Revue'], ['diff', 'Comparaison'], ['export', 'Export']];
   fmts = [['json', 'JSON'], ['csv', 'CSV relations'], ['md', 'Markdown + ERD'], ['ddl', 'SQL DDL (référence)']];
   canReview = computed(() => ['admin', 'reviewer'].includes(this.api.me()?.role ?? ''));
@@ -90,12 +104,34 @@ export class ScanDetailComponent implements OnInit {
     return this.tables().filter(t => !q || t.id.toLowerCase().includes(q) || t.columns.some(c => c.name.toLowerCase().includes(q))); });
   ngOnInit() {
     this.id = this.route.snapshot.paramMap.get('id')!;
-    this.api.scan(this.id).subscribe(x => this.d.set(x));
-    this.api.tables(this.id).subscribe(x => this.tables.set(x));
-    this.reload();
-    this.api.scans().subscribe(s => this.others.set(s.filter(x => x.id !== this.id)));
+    this.api.scans().subscribe({ next: s => this.others.set(s.filter(x => x.id !== this.id)) });
+    this.statusPoll = timer(0, 2500).pipe(
+      switchMap(() => this.api.scan(this.id)),
+      takeWhile(x => x.status === 'analyzing', true)
+    ).subscribe({
+      next: scan => {
+        this.d.set(scan);
+        if (scan.status === 'review_required') this.loadResults();
+        else if (scan.status === 'failed') this.err.set('Le serveur n’a pas pu analyser ce scan. Vérifiez les logs Render et envoyez un nouveau scan après correction.');
+      },
+      error: () => this.err.set('Impossible de charger ce scan. Vérifiez que vous êtes connecté puis réessayez.')
+    });
   }
-  reload() { this.api.graph(this.id).subscribe(x => this.g.set(x)); this.api.scan(this.id).subscribe(x => this.d.set(x)); }
+  ngOnDestroy() { this.statusPoll?.unsubscribe(); }
+  private loadResults() {
+    this.api.tables(this.id).subscribe({
+      next: x => this.tables.set(x),
+      error: () => this.err.set('Le schéma est disponible, mais ses tables n’ont pas pu être chargées.')
+    });
+    this.api.graph(this.id).subscribe({
+      next: x => this.g.set(x),
+      error: () => this.err.set('Le mapping est prêt, mais le graphe n’a pas pu être chargé.')
+    });
+  }
+  reload() {
+    this.api.graph(this.id).subscribe({ next: x => this.g.set(x), error: () => this.err.set('Impossible de recharger le mapping.') });
+    this.api.scan(this.id).subscribe({ next: x => this.d.set(x), error: () => this.err.set('Impossible de recharger le scan.') });
+  }
   cls(s: number) { return 'badge ' + (s >= 0.8 ? 'b-hi' : s >= 0.6 ? 'b-md' : 'b-lo'); }
   private done(m: string) { return { next: () => { this.msg.set(m); this.sel.set(null); this.reload(); }, error: () => this.msg.set('Action refusée (droits ou erreur).') }; }
   rel(e: Edge, dec: string) { this.api.reviewRel(e.id, dec).subscribe(this.done('Relation mise à jour.')); }

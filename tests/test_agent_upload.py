@@ -4,6 +4,23 @@ from unittest.mock import patch
 from udme_agent import cli
 
 
+def test_gui_command_surfaces_enrollment_errors():
+    args = Namespace(gui=True, f=lambda _: (_ for _ in ()).throw(SystemExit("Jeton invalide ou expiré.")))
+    with patch.object(cli, "_show_upload_result") as show:
+        cli.run_command(args)
+    show.assert_called_once_with("Jeton invalide ou expiré.", gui=True)
+
+
+def test_console_command_preserves_exit_behavior():
+    args = Namespace(gui=False, f=lambda _: (_ for _ in ()).throw(SystemExit("Jeton invalide ou expiré.")))
+    try:
+        cli.run_command(args)
+    except SystemExit as exc:
+        assert exc.code == "Jeton invalide ou expiré."
+    else:
+        raise AssertionError("CLI failures must keep their exit status.")
+
+
 def _args():
     return Namespace(
         gui=False,

@@ -28,7 +28,9 @@ udme-agent find-databases             # cherche les bases, VOUS choisissez
 udme-agent scan --upload              # extraction lecture seule + envoi signé
 ```
 3. Le scan apparaît dans **Scans** (revue des relations/mappings, export).
-Sur Windows, le raccourci **Démarrer UDME Agent** lance le parcours guidé : il demande le jeton si le PC n'est pas encore enrôlé, puis envoie le schéma SQLite après confirmation. Les fichiers `.sql`/`.dump` sont des sauvegardes et ne sont ni exécutés ni importés ; pour les autres moteurs, connectez une base active avec un compte en lecture seule et son pilote.
+Sur Windows, le raccourci **Démarrer UDME Agent** lance le parcours guidé : il demande le jeton si le PC n'est pas encore enrôlé, puis envoie le schéma SQLite après confirmation. Les erreurs d'enrôlement ou d'envoi sont affichées dans une boîte de dialogue. Dans **Scans**, les envois en cours sont actualisés automatiquement ; ouvrez **Ouvrir** pour voir le mapping proposé sur l'aperçu et dans l'onglet Revue. Un scan marqué « Échec de l’analyse » nécessite de consulter les logs du service Render.
+
+Les fichiers `.sql`/`.dump` sont des sauvegardes et ne sont ni exécutés ni importés ; pour les autres moteurs, connectez une base active avec un compte en lecture seule et son pilote.
 À l'enrôlement l'agent génère une paire de clés **Ed25519** : la clé privée reste dans `~/.udme/agent.json` (droits 600 ; sous Windows, protégée par le profil utilisateur), le serveur ne reçoit que la clé publique. Révoquer un agent (`POST /agents/{id}/revoke`) bloque ses envois. Les agents enrôlés avant cette version doivent être ré-enrôlés.
 
 ### Installer l'agent Windows
