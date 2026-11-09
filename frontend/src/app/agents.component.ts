@@ -13,7 +13,7 @@ interface Site { id: string; name: string; agents: number; }
   </div>
   @if (token(); as t) { <div class="card warn" role="status"><p><strong>Jeton affiché une seule fois.</strong> Sur le PC de la pharmacie, exécutez :</p>
     <pre style="white-space:pre-wrap;user-select:all">udme-agent enroll --server {{origin}} --token {{t}}</pre>
-    <p class="mut">Ensuite : <code>udme-agent find-databases</code> pour chercher et choisir la base, puis <code>udme-agent scan --upload</code>.</p></div> }
+    <p class="mut">Ensuite : lancez « Démarrer UDME Agent » sur le PC. L'agent vous demandera ce jeton, vous laissera choisir une base compatible, puis enverra son schéma ici. Les fichiers .sql sont des sauvegardes et ne sont pas importés automatiquement.</p></div> }
   @if (err()) { <p class="err" role="alert">{{err()}}</p> }` })
 export class AgentsComponent implements OnInit {
   api = inject(Api); private http = inject(HttpClient);

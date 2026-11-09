@@ -38,7 +38,7 @@ def install_agent(destination: Path, *, create_shortcuts: bool = True) -> Path:
 
     launcher = (
         "@echo off\r\n"
-        f'"{executable}" find-databases --gui %*\r\n'
+        f'"{executable}" find-databases --gui --upload %*\r\n'
     )
     if create_shortcuts:
         appdata = os.environ.get("APPDATA")

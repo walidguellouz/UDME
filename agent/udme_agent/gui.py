@@ -35,3 +35,45 @@ def pick_with_gui(roots=None, include_noise=False) -> str | None:
     ttk.Button(bar, text="Utiliser ce fichier", command=use).pack(side="right"); ttk.Button(bar, text="Annuler", command=stop).pack(side="right", padx=6)
     root.protocol("WM_DELETE_WINDOW", stop); root.mainloop()
     return result[0] if result else None
+
+
+def ask_enrollment_token() -> str | None:
+    import tkinter as tk
+    from tkinter import simpledialog
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        return simpledialog.askstring(
+            "Connexion au portail UDME",
+            "Collez le jeton d'enrôlement généré sur le portail UDME.\n"
+            "Le jeton est à usage unique et sa saisie est masquée :",
+            show="*",
+            parent=root,
+        )
+    finally:
+        root.destroy()
+
+
+def confirm_action(title: str, message: str) -> bool:
+    import tkinter as tk
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        return messagebox.askyesno(title, message, parent=root)
+    finally:
+        root.destroy()
+
+
+def show_message(title: str, message: str) -> None:
+    import tkinter as tk
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        messagebox.showinfo(title, message, parent=root)
+    finally:
+        root.destroy()

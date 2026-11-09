@@ -4,6 +4,7 @@ DB URL is read from env UDME_DB_URL (never a CLI arg, so it stays out of shell h
 from __future__ import annotations
 import argparse, json, os, stat, sys, time, urllib.request, uuid
 import urllib.error
+from getpass import getpass
 from pathlib import Path
 from udme_core.fingerprint import Evidence, fingerprint, windows_installed_apps, windows_services
 from udme_core.connectors import SQLAlchemyConnector
@@ -17,11 +18,17 @@ from udme_core.profiles import wingest
 
 
 CONF = Path(os.environ.get("UDME_HOME", Path.home() / ".udme")) / "agent.json"
+DEFAULT_SERVER = "https://udme-ollm.onrender.com"
+ENROLLMENT_FIELDS = ("tenant_id", "agent_id", "private_key")
 
 
 def load_conf() -> dict:
-    try: return json.loads(CONF.read_text())
-    except OSError: return {}
+    try:
+        return json.loads(CONF.read_text())
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        sys.exit(f"Configuration de l'agent illisible ({CONF}). Réinstallez ou ré-enrôlez cet agent.")
 
 
 def _post(url, body, headers=None):
@@ -30,17 +37,63 @@ def _post(url, body, headers=None):
     with urllib.request.urlopen(req, timeout=60) as r: return r.status, r.read().decode()
 
 
+def _enroll(server: str, token: str, name: str | None = None) -> None:
+    priv, pub = generate_keypair()  # private key stays on this machine
+    try:
+        _, body = _post(
+            f"{server}/api/v1/agents/enroll",
+            {"token": token, "public_key": pub, "name": name or os.environ.get("COMPUTERNAME", "agent")},
+        )
+    except urllib.error.HTTPError as e: sys.exit(f"Enrôlement refusé ({e.code}) : jeton invalide, expiré ou déjà utilisé.")
+    except urllib.error.URLError as e: sys.exit(f"Serveur UDME inaccessible : {e.reason}")
+    d = json.loads(body)
+    if not d.get("tenant_id") or not d.get("agent_id"):
+        sys.exit("Réponse d'enrôlement invalide : identifiants absents.")
+    CONF.parent.mkdir(parents=True, exist_ok=True)
+    temp = CONF.with_suffix(".tmp")
+    temp.write_text(json.dumps({"server": server, "tenant_id": d["tenant_id"], "agent_id": d["agent_id"], "private_key": priv}))
+    try:
+        os.chmod(temp, stat.S_IRUSR | stat.S_IWUSR)  # POSIX 600; on Windows the profile ACL applies
+        os.replace(temp, CONF)
+    except OSError:
+        temp.unlink(missing_ok=True)
+        raise
+
+
 def cmd_enroll(a):
     """One-time enrollment: exchange the short-lived token (from the web portal) for a revocable device credential."""
     server = a.server.rstrip("/")
-    priv, pub = generate_keypair()  # private key stays on this machine
-    try: _, body = _post(f"{server}/api/v1/agents/enroll", {"token": a.token, "public_key": pub, "name": a.name or os.environ.get("COMPUTERNAME", "agent")})
-    except urllib.error.HTTPError as e: sys.exit(f"Enrôlement refusé ({e.code}) : jeton invalide, expiré ou déjà utilisé.")
-    d = json.loads(body); CONF.parent.mkdir(parents=True, exist_ok=True)
-    CONF.write_text(json.dumps({"server": server, "tenant_id": d["tenant_id"], "agent_id": d["agent_id"], "private_key": priv}))
-    try: os.chmod(CONF, stat.S_IRUSR | stat.S_IWUSR)  # POSIX 600; on Windows the profile ACL applies
-    except OSError: pass
-    print(f"Agent enrôlé ({d['agent_id']}). Identifiants enregistrés dans {CONF}")
+    _enroll(server, a.token, a.name)
+    print(f"Agent enrôlé. Identifiants enregistrés dans {CONF}")
+
+
+def _ensure_enrolled(server: str, *, gui: bool) -> None:
+    config = load_conf()
+    if all(config.get(k) for k in ENROLLMENT_FIELDS):
+        configured_server = str(config.get("server", "")).rstrip("/")
+        if configured_server == server:
+            return
+        sys.exit(
+            f"Cet agent est enrôlé sur un autre serveur ({configured_server or 'inconnu'}). "
+            "Vérifiez l'installation avant de le ré-enrôler."
+        )
+
+    if gui:
+        from .gui import ask_enrollment_token
+        token = ask_enrollment_token()
+    else:
+        token = getpass("Jeton d'enrôlement (saisie masquée) : ")
+    if not token:
+        sys.exit("Enrôlement annulé. Aucun scan n'a été envoyé.")
+    _enroll(server, token.strip())
+    print(f"Agent enrôlé. Identifiants enregistrés dans {CONF}")
+
+
+def _show_upload_result(message: str, *, gui: bool) -> None:
+    if not gui:
+        return
+    from .gui import show_message
+    show_message("UDME", message)
 
 
 def cmd_discover(a):
@@ -76,10 +129,24 @@ def cmd_scan(a):
         c = load_conf(); g = lambda k: os.environ.get("UDME_" + k.upper()) or c.get(k)
         if not (g("tenant_id") and g("agent_id") and g("private_key")): sys.exit("Agent non enrôlé : lancez d'abord `udme-agent enroll --server URL --token JETON`.")
         url = c.get("server", "").rstrip("/") + "/api/v1/scans/ingest" if a.upload == "auto" else a.upload
+        if not url.startswith(("https://", "http://")):
+            sys.exit("Serveur UDME absent de la configuration de l'agent.")
         env = sign_envelope(pkg, tenant_id=g("tenant_id"), agent_id=g("agent_id"), scan_id=str(uuid.uuid4()), private_key=g("private_key"))
         try: st, body = _post(url, env)
         except urllib.error.HTTPError as e: sys.exit(f"Envoi refusé ({e.code}) : {e.read().decode()[:200]}")
-        print("Envoyé :", st, body[:200])
+        except urllib.error.URLError as e: sys.exit(f"Serveur UDME inaccessible : {e.reason}")
+        try:
+            response = json.loads(body)
+        except json.JSONDecodeError:
+            sys.exit(f"Le serveur a répondu de façon inattendue (HTTP {st}).")
+        scan_id = response.get("scan_id")
+        print(f"Scan envoyé (HTTP {st}) : {scan_id or body[:200]}")
+        if scan_id:
+            print(f"Consultez le scan sur {c.get('server', '').rstrip('/')}/scans/{scan_id}")
+        _show_upload_result(
+            "Scan envoyé au portail UDME.\n\nOuvrez Scans pour afficher le mapping.",
+            gui=bool(getattr(a, "gui", False)),
+        )
 
 
 def cmd_wingest_discover(a):
@@ -117,8 +184,40 @@ def cmd_find(a):
         path = picker.choose(cands)
     if not path: sys.exit("Aucun fichier choisi. Rien n'a été exécuté.")
     print(f"\nFichier choisi : {path}")
+    if Path(path).suffix.lower() in {".sql", ".dump", ".backup"}:
+        from .picker import proceed
+        proceed(path)
+        if a.gui:
+            from .gui import show_message
+            show_message(
+                "Format non pris en charge",
+                "Ce fichier est un dump/sauvegarde, pas une base directement interrogeable. "
+                "UDME ne l'exécute pas et ne l'envoie pas. Utilisez une base active en lecture seule "
+                "ou un fichier SQLite compatible.",
+            )
+        return
+    server = a.server.rstrip("/")
+    if a.upload:
+        _ensure_enrolled(server, gui=a.gui)
+
+    def confirm(message: str) -> str:
+        if not a.gui:
+            return input(message)
+        from .gui import confirm_action
+        return "o" if confirm_action("UDME", message) else "n"
+
     out = a.out
-    picker.proceed(path, run_scan=lambda: cmd_scan(argparse.Namespace(out=out, product_hint=a.product_hint, confirm_read_only=False, upload=None)))
+    picker.proceed(
+        path,
+        input_fn=confirm,
+        run_scan=lambda: cmd_scan(argparse.Namespace(
+            out=out,
+            product_hint=a.product_hint,
+            confirm_read_only=False,
+            upload="auto" if a.upload else None,
+            gui=a.gui,
+        )),
+    )
 
 
 def cmd_analyze(a):
@@ -148,6 +247,8 @@ def main(argv=None):
     fd.add_argument("--include-noise", action="store_true", help="inclure navigateurs/système")
     fd.add_argument("--include-removable", action="store_true"); fd.add_argument("--max-minutes", type=float, default=15)
     fd.add_argument("--gui", action="store_true", help="fenêtre de sélection"); fd.add_argument("--json", action="store_true", help="liste seule, non interactif")
+    fd.add_argument("--upload", action="store_true", help="enrôler si besoin puis envoyer le scan au serveur UDME")
+    fd.add_argument("--server", default=DEFAULT_SERVER, help="serveur UDME")
     fd.add_argument("--out", default="udme_out"); fd.add_argument("--product-hint", default=None); fd.set_defaults(f=cmd_find)
     an = sub.add_parser("analyze"); an.add_argument("package"); an.set_defaults(f=cmd_analyze)
     df = sub.add_parser("diff"); df.add_argument("old"); df.add_argument("new"); df.set_defaults(f=cmd_diff)

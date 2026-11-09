@@ -6,7 +6,7 @@ import { Api, ScanRow } from './api.service';
   <h2>Scans</h2>
   <div class="card">
     @if (loading()) { <p class="mut">Chargement…</p> }
-    @else if (!rows().length) { <p>Aucun scan. Installez l'agent, enrôlez-le, puis lancez <code>udme-agent scan --upload …</code>.</p> }
+    @else if (!rows().length) { <p>Aucun scan. Installez l'agent, ouvrez « Démarrer UDME Agent » sur le PC, puis choisissez une base compatible. Le schéma sera envoyé après confirmation.</p> }
     @else { <table><thead><tr><th>Date</th><th>Site</th><th>Moteur</th><th>État</th><th>Empreinte du schéma</th><th></th></tr></thead><tbody>
       @for (s of rows(); track s.id) { <tr><td>{{s.created_at | date:'short'}}</td><td>{{s.site}}</td><td>{{s.engine}}</td>
         <td><span class="badge">{{s.status}}</span></td><td class="mut">{{s.schema_hash.slice(0,12)}}</td>

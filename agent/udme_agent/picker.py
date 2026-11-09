@@ -43,6 +43,14 @@ def choose(cands: list[Candidate], input_fn=input, out=print) -> str | None:
 
 def proceed(path: str, input_fn=input, out=print, run_scan=None) -> dict:
     """After the operator picked a file: fingerprint it, then offer the next safe step."""
+    if os.path.splitext(path)[1].lower() in {".sql", ".dump", ".backup"}:
+        out(
+            "\nCe fichier est un dump/sauvegarde, pas une base directement interrogeable. "
+            "L'agent ne l'exécute pas et ne l'envoie pas. Connectez-vous à une base active "
+            "avec un compte en lecture seule, ou utilisez une base SQLite prise en charge."
+        )
+        return {"path": path, "fingerprint": None, "scanned": False}
+
     fp = fingerprint(Evidence(selected_files=[path]))
     out("\nEmpreinte du moteur (indices locaux, non définitifs) :")
     for c in fp["candidates"]: out(f"  - {c['engine']}  score {c['score']}  ({', '.join(c['evidence'])})")

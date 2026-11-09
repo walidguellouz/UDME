@@ -46,3 +46,10 @@ def test_proceed_sqlite_needs_consent_and_nonsqlite_never_scans(tmp_path):
     picker.proceed(str(sq), input_fn=lambda _: "o", out=lambda *_: None, run_scan=lambda: called.append(1)); assert called
     out = []; res = picker.proceed(str(tmp_path / "Data" / "x.fdb"), input_fn=lambda _: "o", out=out.append, run_scan=lambda: called.append(2))
     assert 2 not in called and any("COPIE" in str(o) for o in out)       # extension-only engine: warn, never auto-scan
+
+def test_sql_dump_is_never_executed_or_scanned(tmp_path):
+    dump = tmp_path / "schema.sql"; dump.write_text("CREATE TABLE example (id INTEGER);")
+    called = []; out = []
+    result = picker.proceed(str(dump), out=out.append, run_scan=lambda: called.append(True))
+    assert not result["scanned"] and not called
+    assert any("ne l'exécute pas" in message for message in out)
