@@ -40,6 +40,12 @@ def test_operator_must_choose(tmp_path):
     ans = iter(["1", "n", "q"]); assert picker.choose(r, input_fn=lambda _: next(ans), out=out.append) is None   # declined confirmation, then quit
     ans = iter(["99", "1", "o"]); assert picker.choose(r, input_fn=lambda _: next(ans), out=out.append) == str(sq)
 
+def test_verified_header_marker_is_encodable_in_windows_console(tmp_path):
+    sq = tree(tmp_path); cands = find_databases([str(tmp_path)]); out = []
+    picker.show(cands, out=out.append)
+    "\n".join(out).encode("cp1252")
+    assert "OK" in "\n".join(out)
+
 def test_proceed_sqlite_needs_consent_and_nonsqlite_never_scans(tmp_path):
     sq = tree(tmp_path); called = []
     res = picker.proceed(str(sq), input_fn=lambda _: "n", out=lambda *_: None, run_scan=lambda: called.append(1)); assert not called and not res["scanned"]

@@ -20,7 +20,7 @@ def show(cands: list[Candidate], limit: int = 60, out=print):
     out(f"\n{len(cands)} fichier(s) trouvé(s)" + (f" (affichage des {limit} premiers)" if len(cands) > limit else "") + ":")
     out(f"{'#':>3}  {'Type':<22} {'Taille':>9}  {'En-tête':<8} Chemin")
     for i, c in enumerate(cands[:limit], 1):
-        flag = "verrouillé" if c.locked else ("✔" if c.header_verified else "extension")
+        flag = "verrouillé" if c.locked else ("OK" if c.header_verified else "extension")
         out(f"{i:>3}  {c.kind:<22} {human(c.size):>9}  {flag:<8} {c.path}")
 
 
